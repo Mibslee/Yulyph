@@ -1,0 +1,6 @@
+CFBundleDisplayName = "Yulyph";
+CFBundleName = "Yulyph";
+NSPhotoLibraryAddUsageDescription = "Yulyph needs access to your photo library to save encrypted images.";
+NSPhotoLibraryUsageDescription = "Yulyph needs access to your photo library to select images for encryption.";
+NSCameraUsageDescription = "Yulyph needs camera access to take photos for encryption.";
+NSPhotoLibraryFullAccessUsageDescription = "Yulyph needs full photo library access to save and read encrypted images.";

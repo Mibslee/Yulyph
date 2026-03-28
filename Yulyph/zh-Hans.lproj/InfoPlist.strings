@@ -1,0 +1,6 @@
+CFBundleDisplayName = "聿符";
+CFBundleName = "聿符";
+NSPhotoLibraryAddUsageDescription = "聿符需要访问您的相册以保存加密后的图片。";
+NSPhotoLibraryUsageDescription = "聿符需要访问您的相册以选择图片进行加密。";
+NSCameraUsageDescription = "聿符需要使用相机拍摄图片进行加密。";
+NSPhotoLibraryFullAccessUsageDescription = "聿符需要完整相册访问权限以保存和读取加密图片。";
