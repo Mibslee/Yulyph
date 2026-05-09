@@ -290,7 +290,7 @@ struct TemplateEditorView: View {
             if let image = generatedImage ?? previewImage {
                 Image(uiImage: image)
                     .resizable()
-                    .aspectRatio(3/4, contentMode: .fit)
+                    .aspectRatio(contentMode: .fit)
                     .cornerRadius(16)
                     .shadow(radius: 8)
             } else {
@@ -489,23 +489,47 @@ struct TemplateEditorView: View {
     }
     
     private func renderImage(text: String, image: UIImage?, includeWatermark: Bool) -> UIImage {
-        let size = CGSize(width: 1080, height: 1440)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        
-        return renderer.image { context in
-            let ctx = context.cgContext
-            
-            switch template.style {
-            case .xiaohongshu:
+        switch template.style {
+        case .xiaohongshu:
+            let size = CGSize(width: 1080, height: 1440)
+            let renderer = UIGraphicsImageRenderer(size: size)
+            return renderer.image { context in
+                let ctx = context.cgContext
                 let colors = selectedColor.colors.map { $0.cgColor }
                 let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: [0, 1])!
                 ctx.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
                 drawText(text, fontSize: 160, in: ctx, size: size, watermark: includeWatermark)
-                
-            case .frame:
-                if let img = image {
-                    drawFrameImage(img, in: ctx, size: size, watermark: includeWatermark)
-                }
+            }
+        case .frame:
+            guard let img = image else {
+                return UIImage()
+            }
+            // 根据图片原始宽高比计算画布尺寸，确保不改变长宽比
+            // 将图片的最长边标准化到 1080，再加上对称的白色边框和底部 logo 区域
+            let normalizedImage = img.normalizedOrientation()
+            let imgSize = normalizedImage.size
+            let targetLong: CGFloat = 1080
+            let scale = targetLong / max(imgSize.width, imgSize.height)
+            let scaledImgSize = CGSize(width: imgSize.width * scale, height: imgSize.height * scale)
+            let padding: CGFloat = 60
+            let bottomBar: CGFloat = 140
+            let canvasSize = CGSize(
+                width: scaledImgSize.width + padding * 2,
+                height: scaledImgSize.height + padding + bottomBar
+            )
+            let renderer = UIGraphicsImageRenderer(size: canvasSize)
+            return renderer.image { context in
+                let ctx = context.cgContext
+                UIColor.white.setFill()
+                ctx.fill(CGRect(origin: .zero, size: canvasSize))
+                let imageRect = CGRect(
+                    x: padding,
+                    y: padding,
+                    width: scaledImgSize.width,
+                    height: scaledImgSize.height
+                )
+                normalizedImage.draw(in: imageRect)
+                drawLogoAndText(in: ctx, size: canvasSize)
             }
         }
     }
@@ -540,58 +564,36 @@ struct TemplateEditorView: View {
         }
     }
     
-    private func drawFrameImage(_ image: UIImage, in ctx: CGContext, size: CGSize, watermark: Bool) {
-        UIColor.white.setFill()
-        ctx.fill(CGRect(origin: .zero, size: size))
-        
-        let padding: CGFloat = 60
-        let imageRect = CGRect(x: padding, y: padding, width: size.width - padding * 2, height: size.height - padding * 2 - 80)
-        
-        if let cgImage = image.cgImage {
-            ctx.saveGState()
-            
-            // 翻转坐标系以修正图片方向
-            ctx.translateBy(x: 0, y: size.height)
-            ctx.scaleBy(x: 1, y: -1)
-            
-            let flippedRect = CGRect(
-                x: padding,
-                y: size.height - imageRect.maxY,
-                width: imageRect.width,
-                height: imageRect.height
-            )
-            
-            ctx.draw(cgImage, in: flippedRect)
-            ctx.restoreGState()
-        }
-        
-        // 在右下角添加logo和文字
-        drawLogoAndText(in: ctx, size: size)
-    }
-    
     private func drawLogoAndText(in ctx: CGContext, size: CGSize) {
         // 获取应用名称
         let appName = Bundle.main.localizedInfoDictionary?["CFBundleDisplayName"] as? String ?? "Yulyph"
-        
-        // 绘制logo图片（增大一倍）
+
+        let logoSize: CGFloat = 80
+        let fontSize: CGFloat = 48
+        let textAttrs: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: fontSize, weight: .medium),
+            .foregroundColor: UIColor(red: 0.8, green: 0.65, blue: 0.2, alpha: 1.0)
+        ]
+        let text = NSAttributedString(string: appName, attributes: textAttrs)
+        let textSize = text.size()
+        let spacing: CGFloat = 12
+        let totalWidth = logoSize + spacing + textSize.width
+        // 在底部白色区域居中
+        let bottomAreaTop = size.height - 140
+        let logoX = (size.width - totalWidth) / 2
+        let logoY = bottomAreaTop + (140 - logoSize) / 2
+
         if let logoImage = UIImage(named: "logo"),
            let logoCGImage = logoImage.cgImage {
-            let logoSize: CGFloat = 80  // 从40增大到80
-            let logoX = size.width - 380  // 调整位置
-            let logoY: CGFloat = size.height - 110  // 调整位置
-            
-            let logoRect = CGRect(x: logoX, y: logoY, width: logoSize, height: logoSize)
-            ctx.draw(logoCGImage, in: logoRect)
-            
-            // 绘制金色文字（增大一倍）
-            let textAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 48, weight: .medium),  // 从24增大到48
-                .foregroundColor: UIColor(red: 0.8, green: 0.65, blue: 0.2, alpha: 1.0) // 金色
-            ]
-            let text = NSAttributedString(string: appName, attributes: textAttrs)
-            text.draw(at: CGPoint(x: logoX + logoSize + 12, y: logoY + 16))  // 调整文字位置
+            // UIImage.draw 会自动处理坐标系，这里直接使用 draw(in:)
+            UIGraphicsPushContext(ctx)
+            UIImage(cgImage: logoCGImage).draw(in: CGRect(x: logoX, y: logoY, width: logoSize, height: logoSize))
+            UIGraphicsPopContext()
         }
+        let textY = logoY + (logoSize - textSize.height) / 2
+        text.draw(at: CGPoint(x: logoX + logoSize + spacing, y: textY))
     }
+
     
     private func drawWatermark(in ctx: CGContext, size: CGSize) {
         let attrs: [NSAttributedString.Key: Any] = [
@@ -629,6 +631,17 @@ struct TemplateEditorView: View {
                     self.showSaveAlert = true
                 }
             }
+        }
+    }
+}
+
+private extension UIImage {
+    /// 返回方向为 .up 的图片副本，避免绘制时因 orientation 造成拉伸/旋转。
+    func normalizedOrientation() -> UIImage {
+        if imageOrientation == .up { return self }
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { _ in
+            draw(in: CGRect(origin: .zero, size: size))
         }
     }
 }

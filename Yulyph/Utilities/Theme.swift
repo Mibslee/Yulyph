@@ -96,3 +96,95 @@ extension ShapeStyle where Self == Color {
     static var onSurface: Color { .onSurface }
     static var onSurfaceVariant: Color { .onSurfaceVariant }
 }
+
+// MARK: - Accent Colors
+extension Color {
+    static let accentViolet = Color(hex: "7c4dff")
+    static let accentTeal = Color(hex: "00bfa5")
+    static let accentRose = Color(hex: "f50057")
+    static let accentAmber = Color(hex: "ffab00")
+}
+
+// MARK: - Gradients
+enum ThemeGradient {
+    static let primary = LinearGradient(
+        colors: [Color(hex: "0070eb"), Color(hex: "7c4dff")],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+    static let hero = LinearGradient(
+        colors: [Color(hex: "0058bc"), Color(hex: "0070eb"), Color(hex: "7c4dff")],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+    static let warmSunset = LinearGradient(
+        colors: [Color(hex: "ff6f00"), Color(hex: "f50057")],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+    static let ocean = LinearGradient(
+        colors: [Color(hex: "00bfa5"), Color(hex: "0070eb")],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+    static let tipCard = LinearGradient(
+        colors: [Color(hex: "0058bc"), Color(hex: "7c4dff")],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
+    static func actionButton(_ isEnabled: Bool) -> LinearGradient {
+        if isEnabled {
+            return LinearGradient(
+                colors: [Color(hex: "0070eb"), Color(hex: "0058bc")],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+        return LinearGradient(
+            colors: [Color(.systemGray4), Color(.systemGray3)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+}
+
+// MARK: - Shadow Presets
+enum ThemeShadow {
+    static let card = (color: Color.black.opacity(0.06), radius: CGFloat(16), y: CGFloat(4))
+    static let elevated = (color: Color.black.opacity(0.08), radius: CGFloat(24), y: CGFloat(8))
+    static func blueGlow(_ intensity: Double = 0.2) -> (color: Color, radius: CGFloat, y: CGFloat) {
+        (color: Color(hex: "0070eb").opacity(intensity), radius: 12, y: 4)
+    }
+}
+
+// MARK: - Animation Presets
+enum ThemeAnimation {
+    static let spring = Animation.spring(response: 0.4, dampingFraction: 0.7)
+    static let springBouncy = Animation.spring(response: 0.5, dampingFraction: 0.5)
+    static let easeOut = Animation.easeOut(duration: 0.25)
+    static let easeInOut = Animation.easeInOut(duration: 0.3)
+}
+
+// MARK: - Card Style Modifier
+struct CardStyle: ViewModifier {
+    var padding: CGFloat = 16
+    var cornerRadius: CGFloat = 16
+
+    func body(content: Content) -> some View {
+        content
+            .padding(padding)
+            .background(Color(.systemBackground))
+            .cornerRadius(cornerRadius)
+            .shadow(
+                color: ThemeShadow.card.color,
+                radius: ThemeShadow.card.radius,
+                y: ThemeShadow.card.y
+            )
+    }
+}
+
+extension View {
+    func cardStyle(padding: CGFloat = 16, cornerRadius: CGFloat = 16) -> some View {
+        modifier(CardStyle(padding: padding, cornerRadius: cornerRadius))
+    }
+}

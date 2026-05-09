@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @State private var enableWatermark = true
-    @State private var watermarkText = "Yulyph"
-    @State private var enableFECByDefault = true
-    @State private var selectedLanguage = "中文"
+    @AppStorage("enableWatermark") private var enableWatermark = true
+    @AppStorage("watermarkText") private var watermarkText = "Yulyph"
+    @AppStorage("enableFECByDefault") private var enableFECByDefault = true
+    @AppStorage("selectedLanguage") private var selectedLanguage = "中文"
     let languages = ["中文", "English"]
     
     var body: some View {
@@ -166,7 +166,7 @@ struct SettingsView: View {
                     
                     Spacer()
                     
-                    Text("1.0.0")
+                    Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")
                         .font(.subheadline)
                         .foregroundColor(.primary)
                 }

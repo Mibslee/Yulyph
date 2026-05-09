@@ -308,7 +308,8 @@ struct ExtractView: View {
         
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let encryptedData = try StegoService.shared.extract(from: image)
+                let extractedData = try StegoService.shared.extract(from: image)
+                let encryptedData = FECService.shared.decode(extractedData)
                 let decryptedMessage = try CryptoService.shared.decrypt(encryptedData, with: decryptionKey)
                 
                 DispatchQueue.main.async {

@@ -7,6 +7,7 @@ struct EmbedView: View {
     @State private var secretMessage = ""
     @State private var encryptionKey = ""
     @State private var enableFEC = false
+    @State private var stegoMode: StegoMode = .dct
     @State private var isProcessing = false
     @State private var showResult = false
     @State private var resultImage: UIImage?
@@ -201,7 +202,36 @@ struct EmbedView: View {
     }
     
     private var fecToggleSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
+            // 嵌入模式选择
+            VStack(alignment: .leading, spacing: 10) {
+                Text("嵌入模式")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .textCase(.uppercase)
+                    .tracking(1)
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 12) {
+                    modeButton(
+                        mode: .dct,
+                        icon: "shield.checkered",
+                        title: "抗压缩",
+                        subtitle: "频域 DCT-QIM"
+                    )
+
+                    modeButton(
+                        mode: .lsb,
+                        icon: "square.stack.3d.up",
+                        title: "高容量",
+                        subtitle: "空间域 LSB"
+                    )
+                }
+            }
+
+            Divider()
+
+            // FEC 开关
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("纠错编码")
@@ -210,23 +240,23 @@ struct EmbedView: View {
                         .textCase(.uppercase)
                         .tracking(1)
                         .foregroundColor(.secondary)
-                    
+
                     Text("启用 Reed-Solomon (FEC)")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
-                
+
                 Spacer()
-                
+
                 Toggle("", isOn: $enableFEC)
                     .toggleStyle(SwitchToggleStyle(tint: .blue))
             }
-            
+
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.shield.fill")
                     .font(.caption2)
                     .foregroundColor(.blue)
-                
+
                 Text("推荐")
                     .font(.caption2)
                     .fontWeight(.medium)
@@ -239,6 +269,42 @@ struct EmbedView: View {
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.03), radius: 20, y: 4)
+    }
+
+    private func modeButton(mode: StegoMode, icon: String, title: String, subtitle: String) -> some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.2)) {
+                stegoMode = mode
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                Image(systemName: icon)
+                    .font(.title3)
+                    .foregroundColor(stegoMode == mode ? .white : .blue)
+                    .frame(width: 36, height: 36)
+                    .background(stegoMode == mode ? Color.blue : Color.blue.opacity(0.1))
+                    .cornerRadius(10)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(stegoMode == mode ? .primary : .secondary)
+
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundColor(stegoMode == mode ? .secondary : .secondary.opacity(0.6))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(stegoMode == mode ? Color.blue.opacity(0.05) : Color(.systemGray6).opacity(0.5))
+            .cornerRadius(14)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(stegoMode == mode ? Color.blue.opacity(0.3) : Color.clear, lineWidth: 1.5)
+            )
+        }
     }
     
     private var statusSection: some View {
@@ -258,8 +324,8 @@ struct EmbedView: View {
                 Text("加密就绪")
                     .font(.caption)
                     .fontWeight(.semibold)
-                
-                Text("256位 AES + 元数据注入")
+
+                Text(stegoMode == .dct ? "AES-256 + 频域 DCT-QIM" : "AES-256 + 空域 LSB")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
@@ -321,7 +387,8 @@ struct EmbedView: View {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let encryptedData = try CryptoService.shared.encrypt(secretMessage, with: encryptionKey)
-                let embeddedImage = try StegoService.shared.embed(data: encryptedData, into: image)
+                let payload = enableFEC ? FECService.shared.encode(encryptedData) : encryptedData
+                let embeddedImage = try StegoService.shared.embed(data: payload, into: image, mode: self.stegoMode)
                 
                 DispatchQueue.main.async {
                     self.resultImage = embeddedImage
@@ -575,9 +642,17 @@ struct ResultView: View {
             showSaveAlert = true
             return
         }
-        
-        shareItems = [pngData]
-        showShareSheet = true
+
+        let fileName = "Yulyph_Encrypted_\(Int(Date().timeIntervalSince1970)).png"
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        do {
+            try pngData.write(to: tempURL)
+            shareItems = [tempURL]
+            showShareSheet = true
+        } catch {
+            saveMessage = "分享失败: \(error.localizedDescription)"
+            showSaveAlert = true
+        }
     }
 }
 
