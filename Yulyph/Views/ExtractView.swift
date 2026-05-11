@@ -315,6 +315,7 @@ struct ExtractView: View {
                 DispatchQueue.main.async {
                     self.extractedMessage = decryptedMessage
                     self.isProcessing = false
+                    ActivityStore.shared.record(type: .extract, fileName: "Image_\(Int(Date().timeIntervalSince1970))", description: "DCT · \(decryptedMessage.count) chars")
                 }
             } catch {
                 DispatchQueue.main.async {

@@ -1,9 +1,15 @@
 import SwiftUI
 
+enum AppModule: String, CaseIterable {
+    case hide = "隐藏"
+    case copyright = "版权"
+}
+
 struct HomeView: View {
-    @State private var recentActivities: [ActivityItem] = []
+    @StateObject private var activityStore = ActivityStore.shared
     @State private var heroAppeared = false
     @State private var cardsAppeared = false
+    @State private var selectedModule: AppModule = .hide
 
     private var appName: String {
         Bundle.main.localizedInfoDictionary?["CFBundleDisplayName"] as? String
@@ -16,7 +22,8 @@ struct HomeView: View {
             ScrollView {
                 VStack(spacing: 28) {
                     headerSection
-                    quickActionSection
+                    modulePickerSection
+                    moduleContent
                     templateSection
                     tipOfTheDaySection
                     recentActivitySection
@@ -78,7 +85,28 @@ struct HomeView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var quickActionSection: some View {
+    private var modulePickerSection: some View {
+        Picker("模块", selection: $selectedModule) {
+            ForEach(AppModule.allCases, id: \.self) { module in
+                Text(module.rawValue).tag(module)
+            }
+        }
+        .pickerStyle(.segmented)
+        .opacity(cardsAppeared ? 1 : 0)
+        .offset(y: cardsAppeared ? 0 : 24)
+    }
+
+    @ViewBuilder
+    private var moduleContent: some View {
+        switch selectedModule {
+        case .hide:
+            hideModuleCards
+        case .copyright:
+            copyrightModuleCards
+        }
+    }
+
+    private var hideModuleCards: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("核心功能")
                 .font(.system(size: 13, weight: .bold, design: .rounded))
@@ -95,6 +123,30 @@ struct HomeView: View {
 
                 NavigationLink { ExtractView() } label: {
                     actionCard(icon: "lock.open.fill", gradient: ThemeGradient.warmSunset, title: "提取信息", subtitle: "解析隐藏数据")
+                }
+                .opacity(cardsAppeared ? 1 : 0)
+                .offset(y: cardsAppeared ? 0 : 24)
+            }
+        }
+    }
+
+    private var copyrightModuleCards: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("版权功能")
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1)
+                .foregroundColor(.secondary)
+
+            HStack(spacing: 14) {
+                NavigationLink { CopyrightEmbedView() } label: {
+                    actionCard(icon: "checkmark.shield.fill", gradient: ThemeGradient.ocean, title: "嵌入版权", subtitle: "为图片添加版权信息")
+                }
+                .opacity(cardsAppeared ? 1 : 0)
+                .offset(y: cardsAppeared ? 0 : 24)
+
+                NavigationLink { CopyrightScanView() } label: {
+                    actionCard(icon: "doc.text.magnifyingglass", gradient: ThemeGradient.warmSunset, title: "版权扫描", subtitle: "检测图片版权信息")
                 }
                 .opacity(cardsAppeared ? 1 : 0)
                 .offset(y: cardsAppeared ? 0 : 24)
@@ -182,7 +234,7 @@ struct HomeView: View {
                 .tracking(1)
                 .foregroundColor(.secondary)
 
-            if recentActivities.isEmpty {
+            if activityStore.activities.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 36))
@@ -195,21 +247,37 @@ struct HomeView: View {
                 .padding(.vertical, 36)
                 .background(Color(.systemGray6).opacity(0.6))
                 .cornerRadius(20)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(activityStore.activities.prefix(5)) { activity in
+                        HStack(spacing: 12) {
+                            Image(systemName: activity.type == .embed ? "eye.slash.fill" : "lock.open.fill")
+                                .font(.caption)
+                                .foregroundColor(activity.type == .embed ? .blue : .orange)
+                                .frame(width: 28, height: 28)
+                                .background((activity.type == .embed ? Color.blue : Color.orange).opacity(0.1))
+                                .cornerRadius(8)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(activity.description)
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .lineLimit(1)
+                                Text(activity.date, style: .relative)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                    }
+                }
             }
         }
-    }
-}
-
-struct ActivityItem: Identifiable {
-    let id = UUID()
-    let fileName: String
-    let type: ActivityType
-    let description: String
-    let date: Date
-    
-    enum ActivityType {
-        case embed
-        case extract
     }
 }
 

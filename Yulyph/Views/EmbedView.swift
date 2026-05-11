@@ -8,6 +8,7 @@ struct EmbedView: View {
     @State private var encryptionKey = ""
     @State private var enableFEC = false
     @State private var stegoMode: StegoMode = .dct
+    @State private var strengthIndex: Double = 1  // 默认 .standard
     @State private var isProcessing = false
     @State private var showResult = false
     @State private var resultImage: UIImage?
@@ -22,6 +23,7 @@ struct EmbedView: View {
                     messageInputSection
                     keyInputSection
                     fecToggleSection
+                    capacitySection
                     statusSection
                     actionButtonSection
                 }
@@ -227,6 +229,36 @@ struct EmbedView: View {
                         subtitle: "空间域 LSB"
                     )
                 }
+
+                // 强度滑块（仅 DCT 模式显示）
+                if stegoMode == .dct {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("嵌入强度")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(StegoService.StrengthLevel(rawValue: UInt8(strengthIndex))?.label ?? "标准")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.blue)
+                        }
+
+                        Slider(value: $strengthIndex, in: 0...3, step: 1)
+                            .accentColor(.blue)
+
+                        HStack {
+                            Text("精细")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("最强")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.top, 4)
+                }
             }
 
             Divider()
@@ -269,6 +301,91 @@ struct EmbedView: View {
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.03), radius: 20, y: 4)
+    }
+
+    private var capacitySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("容量预览")
+                .font(.caption)
+                .fontWeight(.bold)
+                .textCase(.uppercase)
+                .tracking(1)
+                .foregroundColor(.secondary)
+
+            if let image = selectedImage {
+                let capacity = StegoService.shared.capacity(for: image, mode: stegoMode)
+                let msgDataSize = secretMessage.utf8.count
+                let totalNeeded = 9 + (enableFEC ? Int(Double(msgDataSize) * 1.15) : msgDataSize)
+                let ratio = min(1.0, CGFloat(totalNeeded) / CGFloat(max(capacity, 1)))
+                let isSufficient = totalNeeded <= capacity
+
+                HStack(spacing: 12) {
+                    Image(systemName: isSufficient ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundColor(isSufficient ? .green : .orange)
+                        .font(.title3)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("可用容量")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(formatBytes(capacity))
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                        }
+
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color(.systemGray5))
+                                    .frame(height: 8)
+
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(isSufficient ? Color.green : Color.orange)
+                                    .frame(width: geo.size.width * ratio, height: 8)
+                            }
+                        }
+                        .frame(height: 8)
+
+                        HStack {
+                            Text("消息大小")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(formatBytes(totalNeeded))
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(isSufficient ? .primary : .orange)
+                        }
+                    }
+                }
+
+                if !isSufficient {
+                    Text("图片太小，无法嵌入完整消息。建议使用更大的图片或切换到高容量模式。")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+            } else {
+                Text("选择图片后显示容量信息")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(20)
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(color: .black.opacity(0.03), radius: 20, y: 4)
+    }
+
+    private func formatBytes(_ bytes: Int) -> String {
+        if bytes < 1024 {
+            return "\(bytes) B"
+        } else if bytes < 1024 * 1024 {
+            return String(format: "%.1f KB", Double(bytes) / 1024.0)
+        } else {
+            return String(format: "%.1f MB", Double(bytes) / (1024.0 * 1024.0))
+        }
     }
 
     private func modeButton(mode: StegoMode, icon: String, title: String, subtitle: String) -> some View {
@@ -388,12 +505,13 @@ struct EmbedView: View {
             do {
                 let encryptedData = try CryptoService.shared.encrypt(secretMessage, with: encryptionKey)
                 let payload = enableFEC ? FECService.shared.encode(encryptedData) : encryptedData
-                let embeddedImage = try StegoService.shared.embed(data: payload, into: image, mode: self.stegoMode)
+                let embeddedImage = try StegoService.shared.embed(data: payload, into: image, mode: self.stegoMode, strength: StegoService.StrengthLevel(rawValue: UInt8(self.strengthIndex)))
                 
                 DispatchQueue.main.async {
                     self.resultImage = embeddedImage
                     self.isProcessing = false
                     self.showResult = true
+                    ActivityStore.shared.record(type: .embed, fileName: "Image_\(Int(Date().timeIntervalSince1970))", description: "\(self.stegoMode == .dct ? "DCT-QIM" : "LSB") · \(payload.count) bytes")
                 }
             } catch {
                 DispatchQueue.main.async {
@@ -534,15 +652,18 @@ struct ResultView: View {
                 Spacer()
                 
                 Button {
-                    saveImage()
+                    saveAndShare()
                 } label: {
-                    Text("保存到相册")
-                        .fontWeight(.bold)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(16)
+                    HStack {
+                        Image(systemName: "square.and.arrow.up")
+                        Text("保存并分享")
+                    }
+                    .fontWeight(.bold)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(16)
                 }
                 .padding(.horizontal)
                 
@@ -598,6 +719,39 @@ struct ResultView: View {
         }
     }
     
+    private func saveAndShare() {
+        guard let image = image,
+              let pngData = image.pngData() else {
+            saveMessage = "无法生成图片数据"
+            showSaveAlert = true
+            return
+        }
+
+        let fileName = "Yulyph_Encrypted_\(Int(Date().timeIntervalSince1970)).png"
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+
+        do {
+            try pngData.write(to: tempURL)
+
+            // 先保存到相册
+            imageSaver.onFinish = { [self] success, _ in
+                DispatchQueue.main.async {
+                    if success {
+                        self.shareItems = [tempURL]
+                        self.showShareSheet = true
+                    } else {
+                        self.shareItems = [tempURL]
+                        self.showShareSheet = true
+                    }
+                }
+            }
+            imageSaver.save(image: image)
+        } catch {
+            saveMessage = "操作失败: \(error.localizedDescription)"
+            showSaveAlert = true
+        }
+    }
+
     private func saveImage() {
         guard let image = image else {
             saveMessage = "图片不存在"
