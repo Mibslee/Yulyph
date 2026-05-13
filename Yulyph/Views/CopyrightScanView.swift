@@ -11,6 +11,13 @@ struct CopyrightScanView: View {
     @State private var scanPassword = ""
     @State private var errorMessage: String?
     @State private var showAlert = false
+    @State private var scanProgress: (processed: Int, total: Int)?
+
+    private final class ScanState {
+        let lock = NSLock()
+        var results: [CopyrightInfo] = []
+        var processedCount = 0
+    }
 
     enum ScanMode: String, CaseIterable {
         case album = "相册"
@@ -82,8 +89,14 @@ struct CopyrightScanView: View {
             } else {
                 if isScanning {
                     Spacer()
-                    ProgressView("正在扫描...")
-                        .padding()
+                    VStack(spacing: 12) {
+                        if let progress = scanProgress {
+                            ProgressView("正在扫描 \(progress.processed)/\(progress.total)...")
+                        } else {
+                            ProgressView("正在扫描...")
+                        }
+                    }
+                    .padding()
                     Spacer()
                 } else {
                     List {
@@ -213,24 +226,39 @@ struct CopyrightScanView: View {
     private func scanSelectedImages() {
         isScanning = true
         detectedInfos = []
+        let total = selectedImages.count
+        guard total > 0 else { return }
+        scanProgress = (0, total)
+
+        let state = ScanState()
 
         DispatchQueue.global(qos: .userInitiated).async {
-            for image in selectedImages {
+            DispatchQueue.concurrentPerform(iterations: total) { index in
+                let image = self.selectedImages[index]
                 if let mode = StegoService.shared.detectMode(from: image), mode == .copyright {
-                    do {
-                        let info = try StegoService.shared.extractCopyright(from: image, password: scanPassword.isEmpty ? nil : scanPassword)
-                        DispatchQueue.main.async {
-                            self.detectedInfos.append(info)
-                        }
-                    } catch {
-                        // 忽略单张图片的错误，继续扫描
+                    if let info = try? StegoService.shared.extractCopyright(from: image, password: self.scanPassword.isEmpty ? nil : self.scanPassword) {
+                        state.lock.lock()
+                        state.results.append(info)
+                        state.lock.unlock()
                     }
+                }
+
+                state.lock.lock()
+                state.processedCount += 1
+                let current = state.processedCount
+                state.lock.unlock()
+
+                DispatchQueue.main.async {
+                    self.scanProgress = (current, total)
                 }
             }
 
+            let finalResults = state.results
             DispatchQueue.main.async {
                 self.isScanning = false
-                if self.detectedInfos.isEmpty {
+                self.scanProgress = nil
+                self.detectedInfos = finalResults
+                if finalResults.isEmpty {
                     self.errorMessage = "未在所选图片中检测到版权水印"
                     self.showAlert = true
                 }
@@ -248,6 +276,7 @@ struct CameraScanContainer: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> CameraViewController {
         let vc = CameraViewController()
         vc.onDetected = onDetected
+        vc.password = password
         return vc
     }
 
@@ -264,6 +293,7 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var lastProcessedTime: Date = .distantPast
     private let processingInterval: TimeInterval = 0.5
+    private lazy var ciContext = CIContext()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -322,8 +352,7 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        let context = CIContext()
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
+        guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else { return }
         let image = UIImage(cgImage: cgImage)
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -345,6 +374,11 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         captureSession?.stopRunning()
+    }
+
+    deinit {
+        captureSession?.stopRunning()
+        captureSession = nil
     }
 }
 

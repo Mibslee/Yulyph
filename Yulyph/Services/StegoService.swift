@@ -78,10 +78,12 @@ class StegoService {
 
     private let defaultStrength: StrengthLevel = .standard
 
-    // 中频系数对 (row, col) — 避开 DC 和高频
+    // 中频系数对 (row, col) — 避开 DC 和高频，每对的两个系数独立不重复。
+    // 必须确保任意两对 (r1,c1) 与 (r2,c2) 不共享相同系数：
+    //   {r1*8+c1, c1*8+r1} ∩ {r2*8+c2, c2*8+r2} = ∅
     private let coeffPairs: [(Int, Int)] = [
-        (2, 3), (3, 2), (4, 1), (1, 4),
-        (3, 4), (4, 3), (5, 2), (2, 5)
+        (2, 3), (4, 1), (3, 4), (5, 2),
+        (1, 5), (2, 6), (3, 7), (0, 3)
     ]
 
     // 预计算 DCT 余弦表
@@ -128,7 +130,7 @@ class StegoService {
             return try embedDCT(data: data, cgImage: cgImage, width: width, height: height, strength: level)
         case .copyright:
             let level = strength ?? defaultStrength
-            return try embedDCT(data: data, cgImage: cgImage, width: width, height: height, strength: level)
+            return try embedDCT(data: data, cgImage: cgImage, width: width, height: height, strength: level, mode: .copyright)
         }
     }
 
@@ -164,29 +166,39 @@ class StegoService {
         let alignedW = (width / blockSize) * blockSize
         let alignedH = (height / blockSize) * blockSize
 
-        // DCT 版权检测
+        // DCT 模式检测 — 从第一个 8x8 块的 DCT 系数中读取模式字节。
+        // 注意：不跨块投票，因为第 0 块包含 mode byte，后续块包含 strength/length bytes。
         if alignedW >= 64 && alignedH >= 64,
            let pixelData = getPixelData(from: cgImage) {
             let channelR = extractChannel(pixelData, channel: 0, width: width, height: height, alignedW: alignedW, alignedH: alignedH)
+
+            // 尝试多个 delta 值：header 固定用 24，但压缩后可能偏移
+            let deltasToTry: [Float] = [24.0, 16.0, 32.0, 48.0]
+
+            // 只检查第一个 8x8 块
             var block = [Float](repeating: 0, count: 64)
             for r in 0..<blockSize {
                 for c in 0..<blockSize {
-                    block[r * blockSize + c] = Float(channelR[r * alignedW + c]) - 128.0
+                    let idx = r * alignedW + c
+                    block[r * blockSize + c] = Float(channelR[idx]) - 128.0
                 }
             }
             let coeffs = dct2d(block)
-            var modeByteBits = [UInt8]()
-            for i in 0..<8 {
-                let (r1, c1) = coeffPairs[i]
-                let r2 = c1, c2 = r1
-                modeByteBits.append(extractQIM(c1: coeffs[r1 * blockSize + c1], c2: coeffs[r2 * blockSize + c2], delta: 24.0))
-            }
-            var modeByte: UInt8 = 0
-            for j in 0..<8 {
-                modeByte = (modeByte << 1) | modeByteBits[j]
-            }
-            if modeByte == StegoMode.copyright.rawValue {
-                return .copyright
+
+            for delta in deltasToTry {
+                var modeByte: UInt8 = 0
+                for i in 0..<8 {
+                    let (r1, c1) = coeffPairs[i]
+                    let r2 = c1, c2 = r1
+                    let bit = extractQIM(c1: coeffs[r1 * blockSize + c1], c2: coeffs[r2 * blockSize + c2], delta: delta)
+                    modeByte = (modeByte << 1) | bit
+                }
+                if modeByte == StegoMode.copyright.rawValue {
+                    return .copyright
+                }
+                if modeByte == StegoMode.dct.rawValue {
+                    return .dct
+                }
             }
         }
 
@@ -226,9 +238,8 @@ class StegoService {
             data = try CryptoService.shared.encrypt(info.toJSON(), with: pwd)
         }
 
-        let header = createHeader(data, mode: .copyright, strength: strength ?? .standard)
-        let payload = header + data
-        return try embed(data: payload, into: image, mode: .copyright, strength: strength)
+        // embed 会在 embedDCT 中为 data 统一创建 header，此处不预加 header
+        return try embed(data: data, into: image, mode: .copyright, strength: strength)
     }
 
     /// 从图片中提取版权信息
@@ -485,7 +496,7 @@ class StegoService {
 
     // MARK: - DCT-QIM Mode (抗压缩)
 
-    private func embedDCT(data: Data, cgImage: CGImage, width: Int, height: Int, strength: StrengthLevel) throws -> UIImage {
+    private func embedDCT(data: Data, cgImage: CGImage, width: Int, height: Int, strength: StrengthLevel, mode: StegoMode = .dct) throws -> UIImage {
         let qimDelta = strength.delta
         // 裁剪到 8 的倍数
         let alignedW = (width / blockSize) * blockSize
@@ -495,7 +506,7 @@ class StegoService {
             throw StegoError.imageTooSmall
         }
 
-        let header = createHeader(data, mode: .dct, strength: strength)
+        let header = createHeader(data, mode: mode, strength: strength)
         let payload = header + data
 
         let bits = payload.flatMap { byte in
@@ -526,11 +537,11 @@ class StegoService {
         // 两阶段嵌入：第一阶段 header 用固定 delta，第二阶段数据用指定 delta
         let headerBits = Array(bits.prefix(header.count * 8))
         let dataBits = Array(bits.dropFirst(header.count * 8))
+        let headerBlockCount = (headerBits.count + bitsPerBlock - 1) / bitsPerBlock  // header 占用的块数
 
         // 阶段一：嵌入 header
         var bitIndex = 0
         var blockIndex = 0
-        let blocksPerRow = blocksX
 
         for blockY in stride(from: 0, to: alignedH, by: blockSize) {
             for blockX in stride(from: 0, to: alignedW, by: blockSize) {
@@ -573,13 +584,16 @@ class StegoService {
             }
         }
 
-        // 阶段二：嵌入数据
+        // 阶段二：嵌入数据（跳过 header 已占用的块，防止覆盖）
         bitIndex = 0
         blockIndex = 0
 
         for blockY in stride(from: 0, to: alignedH, by: blockSize) {
             for blockX in stride(from: 0, to: alignedW, by: blockSize) {
+                defer { blockIndex += 1 }
                 guard bitIndex < dataBits.count else { break }
+                // 跳过 header 已占用的块
+                guard blockIndex >= headerBlockCount else { continue }
 
                 var block = [Float](repeating: 0, count: 64)
                 for r in 0..<blockSize {
@@ -771,7 +785,10 @@ class StegoService {
         let targetQ = (bit == 0)
             ? q - q.truncatingRemainder(dividingBy: 2)
             : q - q.truncatingRemainder(dividingBy: 2) + 1
-        c1 = c1 + (targetQ * delta - diff)
+        let adjustment = targetQ * delta - diff
+        // 对称分配：c1 和 c2 各承担一半调整，减少单系数扰动幅度
+        c1 = c1 + adjustment * 0.5
+        c2 = c2 - adjustment * 0.5
     }
 
     private func extractQIM(c1: Float, c2: Float, delta: Float) -> UInt8 {
@@ -912,11 +929,11 @@ class StegoService {
 
 /// Header 格式:
     ///   LSB: version(1) + length(4 bigEndian) + magic(4) = 9 bytes
-    ///   DCT: version(1) + strength(1) + length(4 bigEndian) + magic(4) = 10 bytes
+    ///   DCT/Copyright: version(1) + strength(1) + length(4 bigEndian) + magic(4) = 10 bytes
     private func createHeader(_ data: Data, mode: StegoMode, strength: StrengthLevel = .standard) -> Data {
         var header = Data()
         header.append(mode.rawValue)
-        if mode == .dct {
+        if mode == .dct || mode == .copyright {
             header.append(strength.rawValue)
         }
         var length = UInt32(data.count).bigEndian

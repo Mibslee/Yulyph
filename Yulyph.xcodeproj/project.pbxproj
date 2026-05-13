@@ -395,14 +395,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = VHL4P85M5X;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "聿符需要使用相机拍摄图片进行加密";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "聿符需要访问您的相册以保存加密后的图片";
+				INFOPLIST_KEY_NSCameraUsageDescription = "聿符需要使用相机扫描识别图片中的版权水印";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "聿符需要访问您的相册以保存加密后的图片或版权水印";
 				INFOPLIST_KEY_NSPhotoLibraryFullAccessUsageDescription = "聿符需要完整相册访问权限以保存和读取加密图片";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "聿符需要访问您的相册以选择图片进行加密";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "聿符需要访问您的相册以选择图片进行加密或添加版权水印";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -412,7 +412,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.7.1;
 				PRODUCT_BUNDLE_IDENTIFIER = ShaneStudio.Yulyph;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -431,14 +431,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = VHL4P85M5X;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "聿符需要使用相机拍摄图片进行加密";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "聿符需要访问您的相册以保存加密后的图片";
+				INFOPLIST_KEY_NSCameraUsageDescription = "聿符需要使用相机扫描识别图片中的版权水印";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "聿符需要访问您的相册以保存加密后的图片或版权水印";
 				INFOPLIST_KEY_NSPhotoLibraryFullAccessUsageDescription = "聿符需要完整相册访问权限以保存和读取加密图片";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "聿符需要访问您的相册以选择图片进行加密";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "聿符需要访问您的相册以选择图片进行加密或添加版权水印";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -448,7 +448,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.7.1;
 				PRODUCT_BUNDLE_IDENTIFIER = ShaneStudio.Yulyph;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

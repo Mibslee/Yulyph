@@ -1,11 +1,11 @@
 import Foundation
 
-struct CopyrightInfo: Codable, Identifiable {
+struct CopyrightInfo: Identifiable {
     let id = UUID()
     let creator: String
     let year: Int
     let license: String
-    let isPublic: Bool  // true=无密钥，false=私有
+    let isPublic: Bool
     var imageName: String?
     var detectedAt: Date
 

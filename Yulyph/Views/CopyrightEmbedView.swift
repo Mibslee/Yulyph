@@ -369,55 +369,87 @@ struct CopyrightResultView: View {
     @Environment(\.dismiss) var dismiss
     @State private var showShareSheet = false
     @State private var shareItems: [Any] = []
+    @State private var shareState: ShareState = .idle
+
+    enum ShareState {
+        case idle
+        case sharing
+        case success
+        case error(String)
+
+        var isIdle: Bool { if case .idle = self { return true }; return false }
+        var isSharing: Bool { if case .sharing = self { return true }; return false }
+        var isSuccess: Bool { if case .success = self { return true }; return false }
+        var isError: Bool { if case .error = self { return true }; return false }
+
+        var errorMessage: String? {
+            if case .error(let msg) = self { return msg }
+            return nil
+        }
+    }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 60))
-                    .foregroundColor(.green)
+            ZStack {
+                ScrollView {
+                    VStack(spacing: 24) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(.green)
 
-                Text("版权信息已嵌入")
-                    .font(.title2)
-                    .fontWeight(.bold)
+                        Text("版权信息已嵌入")
+                            .font(.title2)
+                            .fontWeight(.bold)
 
-                Text("共 \(images.count) 张图片已标记版权水印")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                        Text("共 \(images.count) 张图片已标记版权水印")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(images.indices, id: \.self) { idx in
-                            Image(uiImage: images[idx])
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 120, height: 120)
-                                .clipped()
-                                .cornerRadius(12)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(images.indices, id: \.self) { idx in
+                                    Image(uiImage: images[idx])
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: 120, height: 120)
+                                        .clipped()
+                                        .cornerRadius(12)
+                                }
+                            }
+                            .padding(.horizontal)
                         }
+
+                        Button {
+                            exportAndShare()
+                        } label: {
+                            HStack {
+                                if shareState.isSharing {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                } else {
+                                    Image(systemName: "square.and.arrow.up")
+                                    Text("保存并分享")
+                                }
+                            }
+                            .fontWeight(.bold)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(shareState.isIdle ? Color.blue : Color.gray)
+                            .foregroundColor(.white)
+                            .cornerRadius(16)
+                        }
+                        .disabled(shareState.isSharing)
+                        .padding(.horizontal)
+
+                        Spacer()
                     }
-                    .padding(.horizontal)
+                    .padding(.top, 40)
                 }
 
-                Button {
-                    exportAndShare()
-                } label: {
-                    HStack {
-                        Image(systemName: "square.and.arrow.up")
-                        Text("保存并分享")
-                    }
-                    .fontWeight(.bold)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(16)
+                if case .idle = shareState {} else if case .sharing = shareState {} else {
+                    shareToast
                 }
-                .padding(.horizontal)
-
-                Spacer()
             }
-            .padding(.top, 40)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -425,21 +457,138 @@ struct CopyrightResultView: View {
                 }
             }
             .sheet(isPresented: $showShareSheet) {
-                ShareSheet(items: shareItems)
+                ShareSheetWithCompletion(items: shareItems) { success in
+                    if success {
+                        shareState = .success
+                    } else {
+                        shareState = .error("分享被取消")
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        if shareState.isSuccess || shareState.isError {
+                            shareState = .idle
+                        }
+                    }
+                }
             }
         }
     }
 
-    private func exportAndShare() {
-        guard let firstImage = images.first, let pngData = firstImage.pngData() else { return }
-        let fileName = "Yulyph_Copyright_\(Int(Date().timeIntervalSince1970)).png"
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-        do {
-            try pngData.write(to: tempURL)
-            shareItems = [tempURL]
-            showShareSheet = true
-        } catch { }
+    private var shareToast: some View {
+        VStack {
+            Spacer()
+            HStack(spacing: 12) {
+                if case .success = shareState {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                    Text("已保存并分享")
+                } else if shareState.isError {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundColor(.orange)
+                    Text(shareState.errorMessage ?? "分享失败")
+                } else {
+                    EmptyView()
+                }
+            }
+            .font(.subheadline)
+            .fontWeight(.medium)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(.ultraThinMaterial)
+            .cornerRadius(12)
+            .padding(.bottom, 60)
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .animation(.spring(duration: 0.3), value: shareState.isError)
     }
+
+    private func exportAndShare() {
+        shareState = .sharing
+
+        var pngDatas: [Data] = []
+        for image in images {
+            if let pngData = image.pngData() {
+                pngDatas.append(pngData)
+            }
+        }
+
+        guard !pngDatas.isEmpty else {
+            shareState = .error("图片处理失败")
+            scheduleReset()
+            return
+        }
+
+        if pngDatas.count == 1 {
+            let fileName = "Yulyph_Copyright_\(Int(Date().timeIntervalSince1970)).png"
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+            do {
+                try pngDatas[0].write(to: tempURL)
+                shareItems = [tempURL]
+                showShareSheet = true
+            } catch {
+                shareState = .error("保存失败")
+                scheduleReset()
+            }
+        } else {
+            var shareImages: [UIImage] = []
+            for data in pngDatas {
+                if let img = UIImage(data: data) {
+                    shareImages.append(img)
+                }
+            }
+            guard !shareImages.isEmpty else {
+                shareState = .error("图片处理失败")
+                scheduleReset()
+                return
+            }
+
+            let activityVC = UIActivityViewController(activityItems: shareImages, applicationActivities: nil)
+            activityVC.completionWithItemsHandler = { _, success, _, _ in
+                DispatchQueue.main.async {
+                    self.shareState = success ? .success : .error("分享被取消")
+                    self.scheduleReset()
+                }
+            }
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let rootVC = windowScene.windows.first?.rootViewController {
+                rootVC.present(activityVC, animated: true) {
+                    // Dismissal happens via completion handler
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        if self.shareState.isSharing {
+                            self.shareState = .idle
+                        }
+                    }
+                }
+            } else {
+                shareState = .error("无法打开分享界面")
+                scheduleReset()
+            }
+        }
+    }
+
+    private func scheduleReset() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            if !self.shareState.isIdle && !self.shareState.isSharing {
+                self.shareState = .idle
+            }
+        }
+    }
+}
+
+// MARK: - ShareSheet with completion
+
+struct ShareSheetWithCompletion: UIViewControllerRepresentable {
+    let items: [Any]
+    let onComplete: (Bool) -> Void
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        vc.completionWithItemsHandler = { _, success, _, _ in
+            onComplete(success)
+        }
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {

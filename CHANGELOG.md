@@ -21,6 +21,12 @@
 - **DCT 两阶段嵌入** — header 用固定 delta，数据用用户指定 delta
 - **版权元数据格式** — JSON 格式 {c:creator, y:year, l:license}
 
+### Bug 修复
+
+- **版权水印完全无法提取** — 修复 `createHeader` 不为 `.copyright` 模式添加 strength 字节的问题，导致 header 长度为 9 字节而非预期的 10 字节，提取时全部字节错位
+- **多图片导出只保存第一张** — 修复 `CopyrightResultView.exportAndShare` 只导出 `images.first` 的问题，现在支持多张图片正确导出
+- **摄像头扫描密码绑定失效** — 修复 `CameraScanContainer.makeUIViewController` 未传入 password 的问题
+
 ## v1.5 (2026-05-09)
 
 ### 新增功能
